@@ -1,26 +1,23 @@
 import os
-from locust import HttpLocust, TaskSet, task
+from locust import HttpUser, TaskSet, between, task
 
 SCENARIO = os.environ.get("SCENARIO", "1")
 
 
 class UserTasks(TaskSet):
     @task
-    def execute_scenario(self):
+    def index(self):
         if SCENARIO == "1":
             # Cenário 1: Blog post com uma imagem de aproximadamente 1MB
-            self.client.get("/?p=1", name="Cenario 1 - Post HTML (?p=1)")
-            self.client.get("/wp-content/uploads/img_1mb.bmp", name="Cenario 1 - Imagem 1MB")
+            self.client.get("/?p=1", name="/?p=1 (Imagem 1MB)")
         elif SCENARIO == "2":
             # Cenário 2: Blog post com um texto de aproximadamente 400KB
-            self.client.get("/?p=2", name="Cenario 2 - Post Texto 400KB (?p=2)")
+            self.client.get("/?p=2", name="/?p=2 (Texto 400KB)")
         elif SCENARIO == "3":
             # Cenário 3: Blog post com uma imagem de 300KB
-            self.client.get("/?p=3", name="Cenario 3 - Post HTML (?p=3)")
-            self.client.get("/wp-content/uploads/img_300kb.bmp", name="Cenario 3 - Imagem 300KB")
+            self.client.get("/?p=3", name="/?p=3 (Imagem 300KB)")
 
 
-class WebsiteUser(HttpLocust):
-    task_set = UserTasks
-    min_wait = 1000
-    max_wait = 3000
+class WebsiteUser(HttpUser):
+    tasks = [UserTasks]
+    wait_time = between(0.1, 0.5)

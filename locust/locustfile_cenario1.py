@@ -1,15 +1,13 @@
-from locust import HttpLocust, TaskSet, task
+from locust import HttpUser, TaskSet, between, task
 
 
 class UserTasks(TaskSet):
     @task
-    def post_imagem_1mb(self):
+    def index(self):
         # Cenário 1: Blog post com uma imagem de aproximadamente 1MB
-        self.client.get("/?p=1", name="Cenario 1 - Post HTML (?p=1)")
-        self.client.get("/wp-content/uploads/img_1mb.bmp", name="Cenario 1 - Imagem 1MB")
+        self.client.get("/?p=1", name="/?p=1 (Imagem 1MB)")
 
 
-class WebsiteUser(HttpLocust):
-    task_set = UserTasks
-    min_wait = 1000
-    max_wait = 3000
+class WebsiteUser(HttpUser):
+    tasks = [UserTasks]
+    wait_time = between(0.1, 0.5)

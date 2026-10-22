@@ -41,11 +41,11 @@ echo "=================================================================="
 docker compose stop locust >/dev/null 2>&1 || true
 
 # 3. Executa o container do Locust na mesma rede da aplicação (conforme requisitos.txt)
-docker compose run --rm \
+docker compose run --rm -T \
     -e ATTACKED_HOST="http://nginx" \
     -e LOCUST_FILE="locustfile_cenario${CENARIO}.py" \
-    -e LOCUST_OPTS="--no-web -c ${USUARIOS} -r ${SPAWN_RATE} --run-time ${DURACAO} --csv=${CSV_PREFIX}" \
+    -e LOCUST_OPTS="--headless -u ${USUARIOS} -r ${SPAWN_RATE} --run-time ${DURACAO} --csv=${CSV_PREFIX}" \
     locust
 
 echo ""
-echo "==> Resultados salvos em: ${OUT_DIR}/cenario${CENARIO}_inst${INSTANCIAS}_users${USUARIOS}_requests.csv"
+echo "==> Resultados salvos em: ${OUT_DIR}/cenario${CENARIO}_inst${INSTANCIAS}_users${USUARIOS}_stats.csv"

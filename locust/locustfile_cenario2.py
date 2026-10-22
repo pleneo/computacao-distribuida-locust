@@ -1,14 +1,13 @@
-from locust import HttpLocust, TaskSet, task
+from locust import HttpUser, TaskSet, between, task
 
 
 class UserTasks(TaskSet):
     @task
-    def post_texto_400kb(self):
+    def index(self):
         # Cenário 2: Blog post com um texto de aproximadamente 400KB
-        self.client.get("/?p=2", name="Cenario 2 - Post Texto 400KB (?p=2)")
+        self.client.get("/?p=2", name="/?p=2 (Texto 400KB)")
 
 
-class WebsiteUser(HttpLocust):
-    task_set = UserTasks
-    min_wait = 1000
-    max_wait = 3000
+class WebsiteUser(HttpUser):
+    tasks = [UserTasks]
+    wait_time = between(0.1, 0.5)
