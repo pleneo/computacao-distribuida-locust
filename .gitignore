@@ -1,0 +1,14 @@
+# Dados locais dos containers e artefatos gerados automaticamente
+db_data/
+html/
+assets/
+
+# Python / Ambientes virtuais
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Arquivos temporários de sistema
+.DS_Store
+Thumbs.db

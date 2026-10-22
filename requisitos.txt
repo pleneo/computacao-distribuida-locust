@@ -1,0 +1,4 @@
+- Ele nao quer testes com 10, 100, 1000. Variação das instâncias do Wordpress. Ele falando "quero 3 cargas de exemplo, mas que nao estourem o limite da aplicação". Descobrir na máquina qual o limite. A taxa de erro nao pode passar de 10%, essa é a carga máxima. A carga mínima e a carga média nao tem que ter taxa de erro, 100% de acerto. 
+- Pelo menos 2 maquinas pra fazer os testes, de preferência uma ruinzinha e uma boa, pra saber a diferença de calibragem.
+- Ele comentou sobre o gerador de carga ser fora do ambiente que está rodando o sistema (outro dispositivo), pq se nao o gerador vai disputar recurso com o sistema e o teste nao vai ser melhor aproveitado. Para o trabalho, ele falou que quer o gerador de carga Locust dentro do container da aplicação pra ver a influência do gerador de carga no desempenho da aplicação
+
