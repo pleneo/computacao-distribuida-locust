@@ -77,10 +77,12 @@ def plot_scenario_charts(cenario: int, scenario_data: dict, output_dir: str, maq
 
     ax.set_xlabel("Número de usuários simultâneos", fontsize=11, fontweight="bold")
     ax.set_ylabel("Tempo médio de resposta (s)", fontsize=11, fontweight="bold")
-    ax.set_title(f"{title_prefix} — Tempo de Resposta ({maquina_label})", fontsize=12, fontweight="bold", pad=12)
+    ax.set_title(f"{title_prefix} — Tempo de Resposta\n{maquina_label}", fontsize=12, fontweight="bold", pad=12)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{u} usuários" for u in usuarios_list], fontsize=10)
-    ax.legend(frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
+    # Folga acima das barras para a legenda não cobrir os rótulos
+    ax.set_ylim(top=ax.get_ylim()[1] * 1.18)
+    ax.legend(loc="upper center", ncol=3, frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -116,10 +118,12 @@ def plot_scenario_charts(cenario: int, scenario_data: dict, output_dir: str, maq
 
     ax.set_xlabel("Número de instâncias WordPress", fontsize=11, fontweight="bold")
     ax.set_ylabel("Requisições por segundo (RPS)", fontsize=11, fontweight="bold")
-    ax.set_title(f"{title_prefix} — Requisições por Segundo ({maquina_label})", fontsize=12, fontweight="bold", pad=12)
+    ax.set_title(f"{title_prefix} — Requisições por Segundo\n{maquina_label}", fontsize=12, fontweight="bold", pad=12)
     ax.set_xticks(x_inst)
     ax.set_xticklabels([f"{i} Instância" if i == 1 else f"{i} Instâncias" for i in instancias_list], fontsize=10)
-    ax.legend(frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
+    # Folga acima das barras para a legenda não cobrir os rótulos
+    ax.set_ylim(top=ax.get_ylim()[1] * 1.18)
+    ax.legend(loc="upper center", ncol=3, frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -131,7 +135,7 @@ def plot_scenario_charts(cenario: int, scenario_data: dict, output_dir: str, maq
     print(f"[OK] Gráfico gerado: {out_rps}")
 
 
-def plot_exhaustion_curve(csv_path: str, output_dir: str):
+def plot_exhaustion_curve(csv_path: str, output_dir: str, maquina_label: str):
     """Gera gráfico da curva de saturação / exaustão extrema da máquina."""
     if not os.path.exists(csv_path):
         return
@@ -174,7 +178,7 @@ def plot_exhaustion_curve(csv_path: str, output_dir: str):
     ax2.grid(True, linestyle="--", alpha=0.5)
     ax2.legend()
 
-    fig.suptitle("Curva de Exaustão e Limite de Colapso (Máquina 1 — Ryzen 5 9600X)", fontsize=13, fontweight="bold")
+    fig.suptitle(f"Curva de Exaustão e Limite de Colapso ({maquina_label})", fontsize=13, fontweight="bold")
     fig.tight_layout()
     out_path = os.path.join(output_dir, "curva_exaustao_saturacao.png")
     fig.savefig(out_path, dpi=160)
@@ -182,7 +186,7 @@ def plot_exhaustion_curve(csv_path: str, output_dir: str):
     print(f"[OK] Gráfico de exaustão salvo: {out_path}")
 
 
-def plot_resource_contention(csv_path: str, output_dir: str):
+def plot_resource_contention(csv_path: str, output_dir: str, maquina_label: str):
     """Gera gráfico de pizza e barras mostrando a disputa de CPU/RAM (Locust vs Aplicação)."""
     if not os.path.exists(csv_path):
         return
@@ -216,47 +220,50 @@ def plot_resource_contention(csv_path: str, output_dir: str):
     ax2.spines["right"].set_visible(False)
     ax2.grid(axis="x", linestyle="--", alpha=0.4)
 
-    fig.suptitle("Disputa de Recursos no Mesmo Host — Locust vs. WordPress/Nginx/MySQL (Requisito 3)", fontsize=12, fontweight="bold")
+    fig.suptitle(f"Disputa de Recursos no Mesmo Host — Locust vs. WordPress/Nginx/MySQL\n{maquina_label}", fontsize=12, fontweight="bold")
     fig.tight_layout()
     out_path = os.path.join(output_dir, "disputa_recursos_cpu_ram.png")
-    fig.savefig(out_path, dpi=160)
+    # bbox_inches="tight" inclui os rótulos da pizza, que ficam fora da área do eixo
+    fig.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] Gráfico de disputa de recursos salvo: {out_path}")
 
 
-def plot_machine_comparison(csv_m1: str, csv_m2: str, output_dir: str):
-    """Compara o tempo de resposta e capacidade das Máquinas 1 e 2."""
+def plot_machine_comparison(csv_m1: str, csv_m2: str, output_dir: str, label_m1: str, label_m2: str):
+    """Compara a vazão das duas máquinas no Cenário 1 com o maior nº de instâncias em comum."""
     if not (os.path.exists(csv_m1) and os.path.exists(csv_m2)):
         return
 
     data_m1 = load_summary_csv(csv_m1)
     data_m2 = load_summary_csv(csv_m2)
 
-    # Compara cenário 1 com 3 instâncias
-    users_m1 = sorted({u for (_, u) in data_m1[1].keys()})
-    users_m2 = sorted({u for (_, u) in data_m2[1].keys()})
+    inst = max({i for (i, _) in data_m1[1].keys()} & {i for (i, _) in data_m2[1].keys()})
+    users_m1 = sorted({u for (i, u) in data_m1[1].keys() if i == inst})
+    users_m2 = sorted({u for (i, u) in data_m2[1].keys() if i == inst})
+    n = min(len(users_m1), len(users_m2))
+    users_m1, users_m2 = users_m1[-n:], users_m2[-n:]
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    x_labels = ["Carga Baixa (0% erro)", "Carga Média (0% erro)", "Carga Máxima (≤10% erro)"]
-    x = np.arange(len(x_labels))
+    x_labels = ["Carga Baixa", "Carga Média", "Carga Máxima"] if n == 3 else [f"Carga {i + 1}" for i in range(n)]
+    x = np.arange(n)
     width = 0.35
 
-    rps_m1 = [data_m1[1][(3, u)]["rps"] for u in users_m1]
-    rps_m2 = [data_m2[1][(3, u)]["rps"] for u in users_m2]
+    rps_m1 = [data_m1[1][(inst, u)]["rps"] for u in users_m1]
+    rps_m2 = [data_m2[1][(inst, u)]["rps"] for u in users_m2]
 
-    b1 = ax.bar(x - width/2, rps_m1, width, label=f"Máquina 1 (Forte - Ryzen 5 9600X)\n[Cargas: {users_m1[0]}, {users_m1[1]}, {users_m1[2]} users]", color="#1f77b4", edgecolor="#333333")
-    b2 = ax.bar(x + width/2, rps_m2, width, label=f"Máquina 2 (Fraca / Restrita)\n[Cargas: {users_m2[0]}, {users_m2[1]}, {users_m2[2]} users]", color="#ff7f0e", edgecolor="#333333")
+    b1 = ax.bar(x - width/2, rps_m1, width, label=f"{label_m1}\n[Cargas: {', '.join(map(str, users_m1))} users]", color="#1f77b4", edgecolor="#333333")
+    b2 = ax.bar(x + width/2, rps_m2, width, label=f"{label_m2}\n[Cargas: {', '.join(map(str, users_m2))} users]", color="#ff7f0e", edgecolor="#333333")
 
-    for b in b1:
-        ax.annotate(f"{b.get_height():.1f} RPS", xy=(b.get_x() + b.get_width()/2, b.get_height()), xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8.5)
-    for b in b2:
+    for b in list(b1) + list(b2):
         ax.annotate(f"{b.get_height():.1f} RPS", xy=(b.get_x() + b.get_width()/2, b.get_height()), xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8.5)
 
     ax.set_ylabel("Vazão (Requisições por Segundo - RPS)", fontsize=11, fontweight="bold")
-    ax.set_title("Comparativo de Desempenho e Calibragem: Máquina Forte vs. Fraca (Cenário 1, 3 Instâncias)", fontsize=11, fontweight="bold")
+    ax.set_title(f"Comparativo de Calibragem: {label_m1} vs. {label_m2} (Cenário 1, {inst} Instância(s))", fontsize=11, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(x_labels, fontsize=10)
-    ax.legend(frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
+    # Folga acima das barras para a legenda não cobrir os rótulos
+    ax.set_ylim(top=ax.get_ylim()[1] * 1.18)
+    ax.legend(loc="upper center", ncol=3, frameon=True, facecolor="#f8f9fa", edgecolor="#cccccc")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -276,6 +283,7 @@ def main():
     parser.add_argument("--exhaustion-csv", default=None, help="Caminho para exaustao.csv")
     parser.add_argument("--contention-csv", default=None, help="Caminho para disputa_recursos.csv")
     parser.add_argument("--compare-csv", default=None, help="Segundo CSV de máquina para comparação direta")
+    parser.add_argument("--compare-label", default="Máquina 2", help="Rótulo da segunda máquina no comparativo")
     args = parser.parse_args()
 
     output_dir = args.output_dir or os.path.dirname(os.path.abspath(args.csv_path))
@@ -286,13 +294,13 @@ def main():
         plot_scenario_charts(cenario, scenario_data, output_dir, args.maquina_label)
 
     if args.exhaustion_csv:
-        plot_exhaustion_curve(args.exhaustion_csv, output_dir)
+        plot_exhaustion_curve(args.exhaustion_csv, output_dir, args.maquina_label)
 
     if args.contention_csv:
-        plot_resource_contention(args.contention_csv, output_dir)
+        plot_resource_contention(args.contention_csv, output_dir, args.maquina_label)
 
     if args.compare_csv:
-        plot_machine_comparison(args.csv_path, args.compare_csv, output_dir)
+        plot_machine_comparison(args.csv_path, args.compare_csv, output_dir, args.maquina_label, args.compare_label)
 
 
 if __name__ == "__main__":

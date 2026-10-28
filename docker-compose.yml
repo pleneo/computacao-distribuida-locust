@@ -3,6 +3,8 @@ services:
     image: mysql:5.7
     container_name: mysql
     restart: always
+    # Cada WordPress (Apache prefork) abre até 150 conexões; o padrão (151) estoura com 2+ instâncias
+    command: --max_connections=500
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: wordpress
@@ -74,6 +76,8 @@ services:
     restart: always
     ports:
       - "80:80"
+    ulimits:
+      nofile: { soft: 65535, hard: 65535 }
     depends_on:
       - wordpress1
     volumes:
@@ -81,11 +85,13 @@ services:
       - ./html:/usr/share/nginx/html
 
   locust:
-    image: grubykarol/locust
+    image: grubykarol/locust:1.2.3-python3.9-alpine3.12
     container_name: locust
     restart: unless-stopped
     ports:
       - "8089:8089"
+    ulimits:
+      nofile: { soft: 65535, hard: 65535 }
     depends_on:
       - nginx
     environment:

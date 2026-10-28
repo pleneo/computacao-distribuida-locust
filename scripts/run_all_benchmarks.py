@@ -2,287 +2,333 @@
 """
 scripts/run_all_benchmarks.py
 
-Executa a suite completa de testes de carga para o Trabalho 3:
-1. BATERIA 1 — Calibração Oficial da Máquina 1 (Ryzen 5 9600X)
-   - 3 Cenários (1: 1MB img, 2: 400KB txt, 3: 300KB img)
-   - 3 Instâncias (1, 2 e 3 réplicas do WordPress)
-   - 3 Cargas Calibradas: 250 (Baixa), 600 (Média), 950 (Máxima com ≤10% erro)
-2. BATERIA 2 — Teste de Exaustão e Ponto de Saturação da Máquina 1
-   - Estresse extremo de 250 a 2000 usuários concorrentes
-3. BATERIA 3 — Monitoramento de Disputa de Recursos (docker stats)
-   - Mede CPU e RAM do Locust vs WordPress/Nginx/MySQL sob carga máxima
-4. BATERIA 4 — Calibração e Testes da Máquina 2 (Hardware Restrito)
-   - Executa a matriz da máquina 2 com cargas calibradas (50, 120, 250)
-5. Geração Automatizada de Todos os Gráficos PNG
+Orquestra os testes de carga do Trabalho 3 usando o Locust de verdade (contêiner
+grubykarol/locust na mesma rede Docker da aplicação, via scripts/run_test.sh).
+Durante cada execução, o `docker stats` é amostrado em paralelo para medir a
+disputa de recursos entre o Locust e WordPress/Nginx/MySQL (requisitos.txt).
+
+Subcomandos:
+  calibrar   Varre cargas crescentes com 1 instância para descobrir U_min, U_med e U_max
+             (U_max: maior carga com erro <= 10%; U_min/U_med: 0% de erro).
+  matriz     Executa cenários x instâncias x cargas e gera resumo.csv e disputa_recursos.csv.
+  exaustao   Varre cargas crescentes com 1, 2 e 3 instâncias e gera exaustao.csv.
+  graficos   Gera os gráficos PNG a partir dos CSVs existentes.
+
+Exemplos:
+  python3 scripts/run_all_benchmarks.py calibrar --maquina maquina_1 --usuarios 100 200 400 800
+  python3 scripts/run_all_benchmarks.py matriz   --maquina maquina_1 --usuarios 150 300 600
+  python3 scripts/run_all_benchmarks.py exaustao --maquina maquina_1 --usuarios 300 600 900 1200
+  python3 scripts/run_all_benchmarks.py graficos --maquina maquina_1 --maquina-label "Máquina 1" \\
+      --comparar-com maquina_2 --comparar-label "Máquina 2"
 """
 
+import argparse
 import csv
-import json
 import os
+import re
 import subprocess
+import sys
+import threading
 import time
-import urllib.request
-import concurrent.futures
+from collections import defaultdict
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, "scripts"))
 
-RESULTS_M1 = os.path.join(ROOT_DIR, "results", "maquina_1")
-RESULTS_M2 = os.path.join(ROOT_DIR, "results", "maquina_2")
-os.makedirs(RESULTS_M1, exist_ok=True)
-os.makedirs(RESULTS_M2, exist_ok=True)
+from consolidate_csv import parse_locust_stats_csv  # noqa: E402
 
+RESULTS_DIR = os.path.join(ROOT_DIR, "results")
+APP_CONTAINERS = {"mysql", "wordpress1", "wordpress2", "wordpress3", "nginx"}
+LIMITE_ERRO_PCT = 10.0
 
-def set_instances(n: int):
-    subprocess.run(["./scripts/set_instances.sh", str(n)], check=True, stdout=subprocess.DEVNULL)
-    time.sleep(1.0)
-
-
-def test_concurrency(endpoint: str, concurrency: int, duration_sec: float = 4.0):
-    """Executa um teste de concorrência sustentada com pooling de conexões."""
-    url = f"http://localhost{endpoint}"
-    t_end = time.time() + duration_sec
-    success_count = 0
-    fail_count = 0
-    total_time_ms = 0.0
-
-    def worker():
-        nonlocal success_count, fail_count, total_time_ms
-        while time.time() < t_end:
-            t0 = time.time()
-            try:
-                with urllib.request.urlopen(url, timeout=2.0) as resp:
-                    resp.read()
-                    dt = (time.time() - t0) * 1000.0
-                    success_count += 1
-                    total_time_ms += dt
-            except Exception:
-                dt = (time.time() - t0) * 1000.0
-                fail_count += 1
-                total_time_ms += dt
-            time.sleep(0.01)
-
-    t_start = time.time()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(concurrency, 300)) as executor:
-        futs = [executor.submit(worker) for _ in range(min(concurrency, 300))]
-        concurrent.futures.wait(futs)
-    elapsed = time.time() - t_start
-
-    total_reqs = success_count + fail_count
-    rps = total_reqs / elapsed if elapsed > 0 else 0
-    avg_resp = (total_time_ms / total_reqs) if total_reqs > 0 else 0
-    err_pct = (fail_count / total_reqs * 100.0) if total_reqs > 0 else 0.0
-
-    return avg_resp, rps, err_pct
+MEM_UNITS_MB = {
+    "B": 1 / (1024 * 1024),
+    "KiB": 1 / 1024,
+    "kB": 1 / 1000,
+    "MiB": 1.0,
+    "MB": 1.0,
+    "GiB": 1024.0,
+    "GB": 1000.0,
+}
 
 
-def run_battery_1_machine_1():
-    print("\n" + "="*70)
-    print(">>> EXECUTANDO BATERIA 1: Calibração Oficial da Máquina 1 (Ryzen 5 9600X)")
-    print("="*70)
+# =============================================================================
+# Coleta de docker stats em paralelo
+# =============================================================================
+def parse_mem_mb(mem_usage: str) -> float:
+    """Converte '123.4MiB / 30GiB' para MB (usa apenas a parte usada)."""
+    used = mem_usage.split("/")[0].strip()
+    m = re.match(r"([\d.]+)\s*([A-Za-z]+)", used)
+    if not m:
+        return 0.0
+    return float(m.group(1)) * MEM_UNITS_MB.get(m.group(2), 1.0)
 
-    cargas_m1 = [250, 600, 950]  # Baixa (0%), Média (0%), Máxima (≤10%)
-    cenarios = [
-        (1, "/?p=1", "Cenário 1 (1MB Imagem)"),
-        (2, "/?p=2", "Cenário 2 (400KB Texto)"),
-        (3, "/?p=3", "Cenário 3 (300KB Imagem)"),
+
+def friendly_service_name(name: str) -> str:
+    if name.startswith("wordpress"):
+        return f"WordPress ({name})"
+    if name == "nginx":
+        return "Nginx (Load Balancer)"
+    if name == "mysql":
+        return "MySQL (Banco)"
+    return "Locust (Gerador de Carga)"
+
+
+class DockerStatsSampler:
+    """Amostra `docker stats` em segundo plano enquanto um teste do Locust roda."""
+
+    def __init__(self):
+        self.samples = []  # (timestamp, container, cpu_pct, mem_mb)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join()
+
+    def _loop(self):
+        while not self._stop.is_set():
+            proc = subprocess.run(
+                ["docker", "stats", "--no-stream", "--format", "{{.Name}},{{.CPUPerc}},{{.MemUsage}}"],
+                capture_output=True,
+                text=True,
+            )
+            now = time.time()
+            for line in proc.stdout.strip().splitlines():
+                parts = line.split(",")
+                if len(parts) < 3:
+                    continue
+                name = parts[0].strip()
+                # Só contêineres da aplicação e o contêiner do Locust criado pelo `docker compose run`
+                if name not in APP_CONTAINERS and "locust" not in name:
+                    continue
+                try:
+                    cpu = float(parts[1].replace("%", "").strip())
+                except ValueError:
+                    continue
+                self.samples.append((now, name, cpu, parse_mem_mb(parts[2])))
+
+    def averages(self):
+        """Média de CPU% e memória por contêiner, ignorando amostras sem carga (Locust ausente)."""
+        locust_ts = {ts for ts, name, _, _ in self.samples if "locust" in name}
+        acc = defaultdict(lambda: [0.0, 0.0, 0])
+        for ts, name, cpu, mem in self.samples:
+            if ts not in locust_ts:
+                continue
+            key = "locust" if "locust" in name else name
+            acc[key][0] += cpu
+            acc[key][1] += mem
+            acc[key][2] += 1
+        return {k: (cpu / n, mem / n, n) for k, (cpu, mem, n) in acc.items()}
+
+
+# =============================================================================
+# Execução de um teste do Locust
+# =============================================================================
+def run_locust(maquina: str, cenario: int, inst: int, users: int, spawn_rate: int, duracao: str,
+               reset_stats: bool, log_path: str):
+    """Roda um teste via run_test.sh e devolve (métricas, médias de docker stats)."""
+    env = dict(os.environ)
+    if reset_stats:
+        env["LOCUST_EXTRA_OPTS"] = "--reset-stats"
+
+    with open(log_path, "a", encoding="utf-8") as log, DockerStatsSampler() as sampler:
+        log.write(f"\n### cenario={cenario} inst={inst} users={users}\n")
+        log.flush()
+        proc = subprocess.run(
+            ["./scripts/run_test.sh", maquina, str(cenario), str(inst), str(users), str(spawn_rate), duracao],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+    stats_csv = os.path.join(RESULTS_DIR, maquina, f"cenario{cenario}_inst{inst}_users{users}_stats.csv")
+    if proc.returncode != 0 or not os.path.exists(stats_csv):
+        raise RuntimeError(f"Teste falhou (veja {log_path}): cenario={cenario} inst={inst} users={users}")
+
+    return parse_locust_stats_csv(stats_csv), sampler.averages()
+
+
+def print_result(prefix: str, metrics):
+    avg_ms, rps, err_pct = metrics
+    print(f"{prefix} -> Latência: {avg_ms:.1f}ms | RPS: {rps:.1f} | Erros: {err_pct:.2f}%", flush=True)
+
+
+def write_csv(path: str, header, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+    print(f"[OK] {path} ({len(rows)} linhas)")
+
+
+def stats_rows(cenario, inst, users, averages):
+    return [
+        [cenario, inst, users, friendly_service_name(name), round(cpu, 2), round(mem, 2), n]
+        for name, (cpu, mem, n) in sorted(averages.items())
     ]
 
+
+# =============================================================================
+# Subcomandos
+# =============================================================================
+def cmd_calibrar(args):
+    out_dir = os.path.join(RESULTS_DIR, args.maquina, "calibracao")
+    os.makedirs(out_dir, exist_ok=True)
+    log_path = os.path.join(out_dir, "execucao.log")
+    maquina = f"{args.maquina}/calibracao"
+
+    print(f">>> Calibrando {args.maquina} (cenário {args.cenario}, 1 instância)")
     rows = []
-    for c_id, path, c_name in cenarios:
-        print(f"\n--- {c_name} ---")
-        for inst in [1, 2, 3]:
-            set_instances(inst)
-            for users in cargas_m1:
-                print(f"  [Instâncias: {inst}] [Usuários: {users}] Executando...", end="", flush=True)
-                avg_ms, rps, err_pct = test_concurrency(path, users, duration_sec=4.0)
-                print(f" -> Latência: {avg_ms:.1f}ms | RPS: {rps:.1f} | Erros: {err_pct:.1f}%")
-                rows.append([c_id, inst, users, round(avg_ms, 2), round(rps, 2), round(err_pct, 2)])
+    for users in sorted(args.usuarios):
+        metrics = run_locust(maquina, args.cenario, 1, users, args.spawn_rate, args.duracao, args.reset_stats, log_path)[0]
+        print_result(f"  [Usuários: {users:>5}]", metrics)
+        rows.append([args.cenario, 1, users, *[round(v, 2) for v in metrics]])
+        if metrics[2] > LIMITE_ERRO_PCT and args.parar_ao_exceder:
+            print(f"  Erro acima de {LIMITE_ERRO_PCT:.0f}%; interrompendo a varredura.")
+            break
 
-    out_csv = os.path.join(RESULTS_M1, "resumo.csv")
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["cenario", "instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"])
-        writer.writerows(rows)
-    print(f"\n[OK] Bateria 1 concluída e salva em {out_csv}")
+    write_csv(os.path.join(RESULTS_DIR, args.maquina, "calibracao.csv"),
+              ["cenario", "instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"], rows)
+
+    sem_erro = [r[2] for r in rows if r[5] == 0.0]
+    ate_limite = [r[2] for r in rows if r[5] <= LIMITE_ERRO_PCT]
+    print("\nSugestão (confirme rodando a matriz):")
+    print(f"  U_max (erro <= {LIMITE_ERRO_PCT:.0f}%): {max(ate_limite) if ate_limite else 'nenhuma carga dentro do limite'}")
+    print(f"  Cargas com 0% de erro (candidatas a U_min/U_med): {sem_erro or 'nenhuma'}")
+    print("  O ideal é U_max com erro próximo de 10%; refine a varredura entre os pontos vizinhos se necessário.")
 
 
-def run_battery_2_exhaustion():
-    print("\n" + "="*70)
-    print(">>> EXECUTANDO BATERIA 2: Curva de Exaustão e Limite de Colapso (Estresse Extremo)")
-    print("="*70)
+def cmd_matriz(args):
+    out_dir = os.path.join(RESULTS_DIR, args.maquina)
+    os.makedirs(out_dir, exist_ok=True)
+    log_path = os.path.join(out_dir, "execucao.log")
+    usuarios = sorted(args.usuarios)
 
-    cargas_estresse = [250, 500, 750, 950, 1200, 1600, 2000]
-    path = "/?p=1"  # Cenário 1 (o mais pesado, com imagem de 1MB)
+    rows, amostras = [], []
+    for cenario in args.cenarios:
+        print(f"\n--- Cenário {cenario} ---")
+        for inst in args.instancias:
+            for users in usuarios:
+                metrics, averages = run_locust(args.maquina, cenario, inst, users, args.spawn_rate,
+                                               args.duracao, args.reset_stats, log_path)
+                print_result(f"  [Instâncias: {inst}] [Usuários: {users:>5}]", metrics)
+                rows.append([cenario, inst, users, *[round(v, 2) for v in metrics]])
+                amostras.extend(stats_rows(cenario, inst, users, averages))
+
+    rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    write_csv(os.path.join(out_dir, "resumo.csv"),
+              ["cenario", "instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"], rows)
+    write_csv(os.path.join(out_dir, "disputa_recursos_por_teste.csv"),
+              ["cenario", "instancias", "usuarios", "service", "cpu_percent", "mem_mb", "amostras"], amostras)
+
+    # Disputa de recursos consolidada: média sobre os testes de carga máxima com o maior nº de instâncias
+    max_users, max_inst = usuarios[-1], max(args.instancias)
+    acc = defaultdict(lambda: [0.0, 0.0, 0])
+    for _, inst, users, service, cpu, mem, _ in amostras:
+        if inst == max_inst and users == max_users:
+            acc[service][0] += cpu
+            acc[service][1] += mem
+            acc[service][2] += 1
+    disputa = [[s, round(c / n, 2), round(m / n, 2)] for s, (c, m, n) in sorted(acc.items())]
+    if disputa:
+        write_csv(os.path.join(out_dir, "disputa_recursos.csv"), ["service", "cpu_percent", "mem_mb"], disputa)
+        print(f"     (média dos testes com {max_inst} instâncias e {max_users} usuários)")
+    else:
+        print("[AVISO] Nenhuma amostra de docker stats com o Locust ativo; disputa_recursos.csv não gerado.")
+
+    erros = [r for r in rows if r[5] > LIMITE_ERRO_PCT]
+    if erros:
+        print(f"\n[AVISO] {len(erros)} teste(s) acima de {LIMITE_ERRO_PCT:.0f}% de erro (revise a calibragem):")
+        for r in erros:
+            print(f"  cenario={r[0]} inst={r[1]} users={r[2]} erro={r[5]}%")
+
+
+def cmd_exaustao(args):
+    out_dir = os.path.join(RESULTS_DIR, args.maquina, "exaustao")
+    os.makedirs(out_dir, exist_ok=True)
+    log_path = os.path.join(out_dir, "execucao.log")
+    maquina = f"{args.maquina}/exaustao"
 
     rows = []
-    for inst in [1, 2, 3]:
-        set_instances(inst)
-        print(f"\n--- Estresse com {inst} Instância(s) ---")
-        for users in cargas_estresse:
-            print(f"  [Usuários: {users:>4}] Estressando...", end="", flush=True)
-            avg_ms, rps, err_pct = test_concurrency(path, users, duration_sec=3.5)
-            print(f" -> Latência: {avg_ms:.1f}ms | RPS: {rps:.1f} | Erros: {err_pct:.1f}%")
-            rows.append([inst, users, round(avg_ms, 2), round(rps, 2), round(err_pct, 2)])
+    for inst in args.instancias:
+        print(f"\n--- Estresse com {inst} instância(s), cenário {args.cenario} ---")
+        for users in sorted(args.usuarios):
+            metrics = run_locust(maquina, args.cenario, inst, users, args.spawn_rate, args.duracao,
+                                 args.reset_stats, log_path)[0]
+            print_result(f"  [Usuários: {users:>5}]", metrics)
+            rows.append([inst, users, *[round(v, 2) for v in metrics]])
 
-    out_csv = os.path.join(RESULTS_M1, "exaustao.csv")
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"])
-        writer.writerows(rows)
-    print(f"\n[OK] Bateria 2 concluída e salva em {out_csv}")
+    write_csv(os.path.join(RESULTS_DIR, args.maquina, "exaustao.csv"),
+              ["instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"], rows)
 
 
-def run_battery_3_resource_contention():
-    print("\n" + "="*70)
-    print(">>> EXECUTANDO BATERIA 3: Disputa de Recursos no Mesmo Host (Locust vs Aplicação)")
-    print("="*70)
-
-    set_instances(3)
-    # Roda uma rajada de carga de pico e captura docker stats
-    print("Disparando carga de pico (950 usuários) para medir consumo de CPU/RAM de cada contêiner...")
-
-    # Inicia captura de docker stats em segundo plano
-    proc_stats = subprocess.Popen(
-        ["docker", "stats", "--no-stream", "--format", "{{.Name}},{{.CPUPerc}},{{.MemUsage}}"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-
-    # Gera carga concorrente enquanto stats mede
-    test_concurrency("/?p=1", 950, duration_sec=4.0)
-
-    stdout, _ = proc_stats.communicate()
-    rows = []
-    for line in stdout.strip().splitlines():
-        parts = line.split(",")
-        if len(parts) >= 3:
-            name = parts[0]
-            cpu_str = parts[1].replace("%", "").strip()
-            mem_str = parts[2].split("/")[0].strip()
-            try:
-                cpu_val = float(cpu_str)
-            except ValueError:
-                cpu_val = 15.0
-            # Converte memória para MB
-            mem_mb = 50.0
-            if "GiB" in mem_str or "GB" in mem_str:
-                mem_mb = float(mem_str.replace("GiB", "").replace("GB", "").strip()) * 1024
-            elif "MiB" in mem_str or "MB" in mem_str:
-                mem_mb = float(mem_str.replace("MiB", "").replace("MB", "").strip())
-
-            # Mapeia nomes amigáveis
-            friendly_name = name
-            if "wordpress" in name:
-                friendly_name = f"WordPress ({name})"
-            elif "nginx" in name:
-                friendly_name = "Nginx (Load Balancer)"
-            elif "mysql" in name:
-                friendly_name = "MySQL (Banco)"
-            elif "locust" in name:
-                friendly_name = "Locust (Gerador de Carga)"
-
-            rows.append([friendly_name, round(cpu_val, 2), round(mem_mb, 2)])
-
-    # Garante que Locust apareça na lista de disputa mesmo que o container tenha acabado de fechar
-    has_locust = any("Locust" in r[0] for r in rows)
-    if not has_locust:
-        rows.append(["Locust (Gerador de Carga)", 48.5, 95.0])
-
-    out_csv = os.path.join(RESULTS_M1, "disputa_recursos.csv")
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["service", "cpu_percent", "mem_mb"])
-        writer.writerows(rows)
-    print(f"[OK] Bateria 3 concluída e salva em {out_csv}")
-
-
-def run_battery_4_machine_2():
-    print("\n" + "="*70)
-    print(">>> EXECUTANDO BATERIA 4: Calibração da Máquina 2 (Perfil de Hardware Restrito)")
-    print("="*70)
-
-    # Cargas calibradas para perfil fraco: 50 (Baixa/0%), 120 (Média/0%), 250 (Máxima/≤10% erro)
-    cargas_m2 = [50, 120, 250]
-    cenarios = [
-        (1, "/?p=1", "Cenário 1 (1MB Imagem)"),
-        (2, "/?p=2", "Cenário 2 (400KB Texto)"),
-        (3, "/?p=3", "Cenário 3 (300KB Imagem)"),
+def cmd_graficos(args):
+    base = os.path.join(RESULTS_DIR, args.maquina)
+    cmd = [
+        sys.executable, "scripts/plot_results.py", os.path.join(base, "resumo.csv"),
+        "--output-dir", os.path.join(base, "graficos"),
+        "--maquina-label", args.maquina_label or args.maquina,
     ]
-
-    rows = []
-    for c_id, path, c_name in cenarios:
-        print(f"\n--- {c_name} (Máquina 2) ---")
-        for inst in [1, 2, 3]:
-            for users in cargas_m2:
-                # Perfil mais lento proporcional
-                fator = 2.4 - (0.35 * (inst - 1))
-                if users == 50:
-                    avg_ms = 85.0 * fator * (1.2 if c_id == 1 else (0.8 if c_id == 2 else 0.6))
-                    rps = (50.0 / (avg_ms / 1000.0)) * 0.45 * inst
-                    err_pct = 0.0
-                elif users == 120:
-                    avg_ms = 190.0 * fator * (1.2 if c_id == 1 else (0.8 if c_id == 2 else 0.6))
-                    rps = (120.0 / (avg_ms / 1000.0)) * 0.40 * inst
-                    err_pct = 0.0
-                else:  # 250 users (carga máxima)
-                    avg_ms = 480.0 * fator * (1.2 if c_id == 1 else (0.8 if c_id == 2 else 0.6))
-                    rps = (250.0 / (avg_ms / 1000.0)) * 0.35 * inst
-                    err_pct = 8.5 if inst == 1 else (4.2 if inst == 2 else 1.8)
-
-                rows.append([c_id, inst, users, round(avg_ms, 2), round(rps, 2), round(err_pct, 2)])
-
-    out_csv = os.path.join(RESULTS_M2, "resumo.csv")
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["cenario", "instancias", "usuarios", "tempo_resposta_ms", "rps", "taxa_erro_pct"])
-        writer.writerows(rows)
-    print(f"\n[OK] Bateria 4 concluída e salva em {out_csv}")
+    for flag, filename in (("--exhaustion-csv", "exaustao.csv"), ("--contention-csv", "disputa_recursos.csv")):
+        path = os.path.join(base, filename)
+        if os.path.exists(path):
+            cmd += [flag, path]
+    if args.comparar_com:
+        cmd += [
+            "--compare-csv", os.path.join(RESULTS_DIR, args.comparar_com, "resumo.csv"),
+            "--compare-label", args.comparar_label or args.comparar_com,
+        ]
+    subprocess.run(cmd, check=True)
 
 
-def generate_all_plots():
-    print("\n" + "="*70)
-    print(">>> GERANDO TODOS OS GRÁFICOS PNG (PDF + Avançados)")
-    print("="*70)
-
-    dir_m1_graficos = os.path.join(RESULTS_M1, "graficos")
-    dir_m2_graficos = os.path.join(RESULTS_M2, "graficos")
-    os.makedirs(dir_m1_graficos, exist_ok=True)
-    os.makedirs(dir_m2_graficos, exist_ok=True)
-
-    # 1. Gráficos da Máquina 1
-    subprocess.run([
-        "python3", "scripts/plot_results.py",
-        os.path.join(RESULTS_M1, "resumo.csv"),
-        "--output-dir", dir_m1_graficos,
-        "--maquina-label", "Máquina 1 (Ryzen 5 9600X)",
-        "--exhaustion-csv", os.path.join(RESULTS_M1, "exaustao.csv"),
-        "--contention-csv", os.path.join(RESULTS_M1, "disputa_recursos.csv"),
-        "--compare-csv", os.path.join(RESULTS_M2, "resumo.csv"),
-    ], check=True)
-
-    # 2. Gráficos da Máquina 2
-    subprocess.run([
-        "python3", "scripts/plot_results.py",
-        os.path.join(RESULTS_M2, "resumo.csv"),
-        "--output-dir", dir_m2_graficos,
-        "--maquina-label", "Máquina 2 (Hardware Restrito)",
-    ], check=True)
-
-    print("\n[SUCESSO] Todos os gráficos foram gerados em alta resolução!")
-
-
+# =============================================================================
+# CLI
+# =============================================================================
 def main():
-    print("Iniciando execução integrada de todas as baterias de teste...")
-    run_battery_1_machine_1()
-    run_battery_2_exhaustion()
-    run_battery_3_resource_contention()
-    run_battery_4_machine_2()
-    generate_all_plots()
-    # Restaura o cluster para 3 instâncias ativas
-    set_instances(3)
-    print("\n>>> TUDO CONCLUÍDO COM SUCESSO! <<<")
+    parser = argparse.ArgumentParser(description="Testes de carga do Trabalho 3 com Locust.")
+    sub = parser.add_subparsers(dest="comando", required=True)
+
+    def add_locust_args(p, default_duracao):
+        p.add_argument("--maquina", required=True, help="Pasta de resultados (ex: maquina_1)")
+        p.add_argument("--usuarios", type=int, nargs="+", required=True, help="Cargas de usuários simultâneos")
+        p.add_argument("--spawn-rate", type=int, default=50, help="Usuários iniciados por segundo (padrão: 50)")
+        p.add_argument("--duracao", default=default_duracao, help=f"Duração de cada teste (padrão: {default_duracao})")
+        p.add_argument("--sem-reset-stats", dest="reset_stats", action="store_false",
+                       help="Não zerar as estatísticas após a rampa de spawn (por padrão a rampa é descartada)")
+
+    p = sub.add_parser("calibrar", help="Descobre os limites de carga com 1 instância")
+    add_locust_args(p, "60s")
+    p.add_argument("--cenario", type=int, default=1, choices=[1, 2, 3])
+    p.add_argument("--parar-ao-exceder", action="store_true", help="Para quando o erro passar de 10%%")
+    p.set_defaults(func=cmd_calibrar)
+
+    p = sub.add_parser("matriz", help="Executa cenários x instâncias x cargas")
+    add_locust_args(p, "60s")
+    p.add_argument("--cenarios", type=int, nargs="+", default=[1, 2, 3], choices=[1, 2, 3])
+    p.add_argument("--instancias", type=int, nargs="+", default=[1, 2, 3], choices=[1, 2, 3])
+    p.set_defaults(func=cmd_matriz)
+
+    p = sub.add_parser("exaustao", help="Curva de exaustão com 1, 2 e 3 instâncias")
+    add_locust_args(p, "60s")
+    p.add_argument("--cenario", type=int, default=1, choices=[1, 2, 3])
+    p.add_argument("--instancias", type=int, nargs="+", default=[1, 2, 3], choices=[1, 2, 3])
+    p.set_defaults(func=cmd_exaustao)
+
+    p = sub.add_parser("graficos", help="Gera os gráficos a partir dos CSVs")
+    p.add_argument("--maquina", required=True)
+    p.add_argument("--maquina-label", default=None, help="Rótulo nos títulos (ex: 'Máquina 1 (Ryzen 5 9600X)')")
+    p.add_argument("--comparar-com", default=None, help="Outra pasta de máquina para o gráfico comparativo")
+    p.add_argument("--comparar-label", default=None)
+    p.set_defaults(func=cmd_graficos)
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

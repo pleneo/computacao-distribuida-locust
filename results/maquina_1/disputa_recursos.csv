@@ -1,8 +1,0 @@
-service,cpu_percent,mem_mb
-Nginx (Load Balancer),26.93,13.77
-WordPress (wordpress1),287.95,1138.69
-WordPress (wordpress2),269.57,510.8
-WordPress (wordpress3),267.85,564.1
-MySQL (Banco),115.67,890.6
-redis,0.3,8.29
-Locust (Gerador de Carga),48.5,95.0

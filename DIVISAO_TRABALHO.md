@@ -1,124 +1,99 @@
 # Divisão de Tarefas — Trabalho 3 (Testes de Carga com Locust e WordPress)
 
-Como toda a **fundação de código e infraestrutura** (`docker-compose.yml`, configs do Nginx para 1/2/3 instâncias, scripts de criação automática dos 3 cenários no WordPress, scripts do Locust e gerador de gráficos) **já está pronta neste repositório**, o trabalho restante consiste na **execução experimental (calibragem + coleta nas máquinas)** e na **análise dos resultados (gráficos + relatório)**.
+A infraestrutura, a metodologia e a **Máquina 2 (fraca)** estão prontas. **Falta medir a Máquina 1 (Ryzen 5 9600X)** e fechar a análise comparativa entre as duas máquinas.
 
-Abaixo está a divisão justa do que **falta fazer agora** entre as 3 pessoas.
+> ⚠️ **Antes de testar, atualize o repositório (`git pull`).** A versão anterior tinha limites de configuração que geravam 54% a 85% de erros com 2 e 3 instâncias (ver seção 6 do `README.md`). Resultados obtidos com o código antigo **não servem** e não são comparáveis com os da Máquina 2.
 
 ---
 
-## ✅ O que JÁ está pronto no repositório (Fundação)
+## ✅ O que já está pronto
 
 - [x] `docker-compose.yml` com MySQL, 3 instâncias de WordPress, Nginx e Locust na mesma rede.
-- [x] `nginx/nginx.1.conf`, `nginx.2.conf`, `nginx.3.conf` + `scripts/set_instances.sh` para alternar entre 1, 2 e 3 instâncias.
-- [x] `scripts/generate_assets.py` e `scripts/setup_wordpress.sh` que instalam o WordPress e criam sozinhos os 3 posts (`/?p=1` com 1MB, `/?p=2` com 400KB de texto, `/?p=3` com 300KB).
-- [x] Scripts do Locust (`locust/locustfile_cenario1.py`, `2` e `3`) e executor automatizado (`scripts/run_test.sh`).
-- [x] Consolidador de CSV (`scripts/consolidate_csv.py`) e gerador dos gráficos do PDF (`scripts/plot_results.py`).
+- [x] Correção dos gargalos: MySQL `max_connections=500`, Nginx com `worker_processes auto` / `worker_connections 8192` e `ulimit nofile 65535` no Nginx e no Locust.
+- [x] Locustfiles com **timeout de 10 s** (requisição sem resposta em 10 s conta como erro).
+- [x] `scripts/run_test.sh` mede **60 s após a rampa** de spawn.
+- [x] `scripts/run_all_benchmarks.py` com os subcomandos `calibrar`, `matriz`, `exaustao` e `graficos`.
+- [x] **Máquina 2 (Intel i7-1165G7, 4C/8T, 16 GB):** calibragem, matriz de 27 testes (todos dentro da regra), CSVs brutos, disputa de recursos e gráficos em `results/maquina_2/`.
+- [x] `README.md` com metodologia, gargalos encontrados, resultados e análise da Máquina 2.
 
 ---
 
-## 📌 Regras do Professor para os Testes (`requisitos.txt`)
+## 📌 Regras do Professor (`requisitos.txt`)
 
-1. **Calibragem da Carga (em vez de usar 10, 100 e 1000 fixos):**
-   - Descobrir o limite real da máquina testada (usando 1 instância do WordPress como base).
-   - **Carga Máxima ($U_{max}$):** Quantidade de usuários onde a **taxa de erro chega perto de 10% (nunca passando de 10%)**.
-   - **Carga Baixa ($U_{min}$) e Carga Média ($U_{med}$):** Quantidades menores de usuários onde a **taxa de erro é 0% ($100\%$ de acerto)**.
-2. **Pelo menos 2 máquinas diferentes:**
-   - Rodar em uma máquina mais forte e outra mais fraca para comparar a diferença de calibragem.
-3. **Locust rodando dentro do Docker junto com a aplicação:**
-   - Já configurado no `docker-compose.yml` para avaliar no relatório a disputa de recursos (CPU/RAM) entre o Locust e o WordPress/Nginx/MySQL.
+1. **Calibragem da carga** (em vez de 10, 100 e 1000 fixos):
+   - **Carga Baixa ($U_{min}$) e Carga Média ($U_{med}$):** **0% de erro**.
+   - **Carga Máxima ($U_{max}$):** erro perto de 10%, **nunca acima de 10%**.
+   - A regra vale para **todas as 27 combinações** (3 cenários × 3 instâncias × 3 cargas).
+2. **Pelo menos 2 máquinas** (uma forte e uma fraca).
+3. **Locust no mesmo host da aplicação**, para analisar a disputa de recursos.
 
 ---
 
-## 👥 O que cada pessoa vai fazer agora
+## 👥 O que falta fazer
 
-### 👤 Pessoa 1 — Publicação do Repo + Calibragem e Testes na Máquina 1
-**Foco:** Subir o repositório no GitHub, validar o setup inicial e executar toda a bateria de testes na **Máquina 1** (ex: máquina mais potente ou principal).
+### 👤 Pessoa 1 — Testes na Máquina 1 (Ryzen 5 9600X)
 
-1. **Criar o repositório no GitHub** e fazer `git push` desta estrutura.
-2. **Anotar o hardware da Máquina 1:** Modelo da CPU (núcleos/threads), quantidade de RAM e Sistema Operacional.
-3. **Subir e inicializar o ambiente:**
+1. **Atualizar o repositório e subir o ambiente:**
    ```bash
+   git pull
    ./scripts/setup_wordpress.sh
    ```
-4. **Calibrar as 3 cargas da Máquina 1:**
-   - Rodar `./scripts/set_instances.sh 1` e `SCENARIO=1 docker compose up -d locust`.
-   - Abrir `http://localhost:8089` e testar quantidades de usuários até achar:
-     - **Carga Máxima ($U_{max}$):** Taxa de falha (*Failures*) $> 0\%$ e $\le 10\%$.
-     - **Carga Média ($U_{med}$):** ~50% da carga máxima, com **0% de falha**.
-     - **Carga Baixa ($U_{min}$):** ~20% da carga máxima, com **0% de falha**.
-5. **Rodar a bateria automatizada na Máquina 1 (3 cenários × 3 instâncias × 3 cargas):**
+   Se o ambiente já existia, recrie MySQL e Nginx para aplicar a configuração nova:
    ```bash
-   # Substitua 20, 60 e 120 pelos valores (U_min, U_med, U_max) descobertos na Máquina 1:
-   for cenario in 1 2 3; do
-     for inst in 1 2 3; do
-       for users in 20 60 120; do
-         ./scripts/run_test.sh maquina_1 $cenario $inst $users 10 60s
-       done
-     done
-   done
-
-   python3 scripts/consolidate_csv.py results/maquina_1
+   docker compose up -d --force-recreate mysql nginx
    ```
-6. **Subir os resultados (`results/maquina_1/resumo.csv`) e as specs da Máquina 1 no GitHub.**
+2. **Anotar o hardware:** CPU (núcleos/threads), RAM, sistema operacional e versão do Docker.
+3. **Calibrar** (cenário 1, 1 instância; a varredura para sozinha quando o erro passa de 10%):
+   ```bash
+   python3 scripts/run_all_benchmarks.py calibrar --maquina maquina_1 --cenario 1 \
+       --usuarios 200 400 800 1200 1600 2000 2500 3000 --duracao 60s --parar-ao-exceder
+   ```
+   - Se o erro passar de 10% logo no início, refine com cargas intermediárias.
+   - **U_max:** a maior carga com erro ≤ 10%, **com folga**. Com 3 instâncias a latência é um pouco maior. Na Máquina 2, o erro com 800 usuários foi de 5,0% com 1 instância e 8,2% com 3.
+   - **U_min e U_med:** cargas com 0% de erro (ex.: ~25% e ~50% de U_max).
+4. **Rodar a matriz (27 testes, ~45 min):**
+   ```bash
+   python3 scripts/run_all_benchmarks.py matriz --maquina maquina_1 --usuarios <U_min> <U_med> <U_max> --duracao 60s
+   ```
+   Se no final aparecer o aviso **"acima de 10% de erro"**, reduza U_max e rode a matriz de novo.
+5. **Gerar os gráficos** (o segundo comando também gera o comparativo entre as máquinas):
+   ```bash
+   python3 scripts/run_all_benchmarks.py graficos --maquina maquina_1 \
+       --maquina-label "Máquina 1 (Ryzen 5 9600X, 6C/12T, 32 GB)" \
+       --comparar-com maquina_2 --comparar-label "Máquina 2 (i7-1165G7, 4C/8T, 16 GB)"
+   ```
+6. **Subir tudo de `results/maquina_1/`** (inclusive os CSVs brutos `cenario*_stats.csv`, `*_failures.csv`, `*_stats_history.csv` e o `execucao.log`) e as especificações do hardware.
+
+> Durante os testes, deixe a máquina sem outras cargas pesadas (navegador com muitas abas, jogos, builds), porque elas disputam CPU com a aplicação.
 
 ---
 
-### 👤 Pessoa 2 — Calibragem e Testes na Máquina 2 (Hardware Diferente)
-**Foco:** Clonar o repositório pronto em uma **segunda máquina** (preferencialmente mais fraca ou de configuração diferente da Máquina 1), calibrar os limites dela e coletar os resultados.
+### 👤 Pessoa 2 — Máquina 2 ✅ concluída
 
-1. **Clonar o repositório na Máquina 2** e anotar o hardware (CPU, núcleos/threads, RAM, SO).
-2. **Subir e inicializar o ambiente com 1 comando:**
-   ```bash
-   ./scripts/setup_wordpress.sh
-   ```
-3. **Calibrar as 3 cargas específicas da Máquina 2:**
-   - Rodar `./scripts/set_instances.sh 1` e `SCENARIO=1 docker compose up -d locust`.
-   - Acessar `http://localhost:8089` e encontrar os valores de **$U'_{min}$ (0% erro)**, **$U'_{med}$ (0% erro)** e **$U'_{max}$ ($\le 10\%$ erro)** para a Máquina 2.
-4. **Rodar a bateria automatizada na Máquina 2:**
-   ```bash
-   # Substitua 10, 30 e 60 pelos valores (U'_min, U'_med, U'_max) descobertos na Máquina 2:
-   for cenario in 1 2 3; do
-     for inst in 1 2 3; do
-       for users in 10 30 60; do
-         ./scripts/run_test.sh maquina_2 $cenario $inst $users 5 60s
-       done
-     done
-   done
-
-   python3 scripts/consolidate_csv.py results/maquina_2
-   ```
-5. **Subir os resultados (`results/maquina_2/resumo.csv`) e as specs da Máquina 2 no GitHub.**
+Resultados em `results/maquina_2/`: cargas de **200 / 400 / 800 usuários** e as 27 combinações dentro da regra.
 
 ---
 
-### 👤 Pessoa 3 — Geração dos Gráficos, Análise dos Dados e Relatório Final
-**Foco:** Processar os dados das Máquinas 1 e 2, gerar os gráficos exigidos pelo PDF e escrever a análise técnica e conclusões do trabalho (e opcionalmente rodar em uma Máquina 3 se quiserem 3 pontos de comparação).
+### 👤 Pessoa 3 — Análise comparativa e fechamento do README
 
-1. **Gerar todos os gráficos das Máquinas 1 e 2** usando o script pronto:
-   ```bash
-   pip install matplotlib numpy
+Depois que a Máquina 1 estiver no repositório:
 
-   python3 scripts/plot_results.py results/maquina_1/resumo.csv \
-       --output-dir results/maquina_1/graficos \
-       --maquina-label "Máquina 1"
-
-   python3 scripts/plot_results.py results/maquina_2/resumo.csv \
-       --output-dir results/maquina_2/graficos \
-       --maquina-label "Máquina 2"
-   ```
-   *(Serão gerados 6 gráficos por máquina: Tempo de Resposta e RPS para os Cenários 1, 2 e 3, idênticos ao modelo das páginas 4 e 5 do PDF).*
-2. **Redigir o Relatório / Documentação Final de Resultados contendo:**
-   - **Tabela de Calibragem (Máquina 1 vs. Máquina 2):** Comparando o hardware das duas máquinas e qual foi a carga mínima, média e máxima ($\le 10\%$ erro) suportada por cada uma.
-   - **Análise dos 3 Cenários (1MB Imagem vs. 400KB Texto vs. 300KB Imagem):** Explicar por que o cenário de texto (processamento PHP + leitura MySQL) e os cenários de imagem (I/O e banda do Apache/Nginx) impactam de formas diferentes o tempo de resposta e o RPS.
-   - **Análise da Escalabilidade (1 vs. 2 vs. 3 instâncias do WordPress):** Mostrar nos gráficos como o balanceamento do Nginx reduziu o tempo de resposta ou aumentou o RPS.
-   - **Discussão sobre o Gerador de Carga no Mesmo Host (exigência do `requisitos.txt`):** Explicar como o fato do contêiner do Locust rodar na mesma máquina disputa CPU e memória com os contêineres da aplicação, podendo limitar o ganho ao escalar para 3 instâncias.
+1. Preencher no `README.md`:
+   - **Seção 4:** a calibragem da Máquina 1 (U_min / U_med / U_max) e a confirmação das especificações do hardware.
+   - **Seção 8.2:** a tabela de resultados da Máquina 1 (do `results/maquina_1/resumo.csv`), os gráficos e a disputa de recursos.
+   - **Gráfico comparativo** entre as máquinas (`results/maquina_1/graficos/comparativo_maquinas_calibragem.png`).
+2. Escrever a **análise Máquina 1 × Máquina 2** na seção 9:
+   - quanto a máquina mais forte aumenta a carga máxima e o RPS;
+   - se, com mais núcleos, 2 e 3 instâncias passam a ganhar vazão. Na Máquina 2 não ganham, porque a CPU satura (~767% de 800%);
+   - o peso do Locust na CPU de cada máquina.
+3. Conferir se todos os números do README batem com os `resumo.csv`.
 
 ---
 
-## 📊 Resumo da Divisão Atualizada
+## 📊 Resumo
 
-| Integrante | Responsabilidade Principal | Entregável |
+| Integrante | Responsabilidade | Status |
 | :--- | :--- | :--- |
-| **Pessoa 1** | Subir repo inicial + Calibrar e testar na **Máquina 1** | Repo no GitHub + `results/maquina_1/resumo.csv` + Specs Máquina 1 |
-| **Pessoa 2** | Calibrar e testar na **Máquina 2** (hardware diferente) | `results/maquina_2/resumo.csv` + Specs Máquina 2 |
-| **Pessoa 3** | Gerar os gráficos + Redigir análise comparativa e relatório | Gráficos PNG (`results/*/graficos/`) + Relatório/Análise final |
+| **Pessoa 1** | Calibrar e testar na **Máquina 1 (Ryzen)** | ⏳ Pendente |
+| **Pessoa 2** | Calibrar e testar na **Máquina 2 (i7-1165G7)** | ✅ Concluído |
+| **Pessoa 3** | Análise comparativa + fechamento do README | ⏳ Depende da Máquina 1 |

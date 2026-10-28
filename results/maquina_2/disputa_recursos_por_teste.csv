@@ -1,0 +1,136 @@
+cenario,instancias,usuarios,service,cpu_percent,mem_mb,amostras
+1,1,200,Locust (Gerador de Carga),75.53,49.03,32
+1,1,200,MySQL (Banco),88.55,875.7,32
+1,1,200,Nginx (Load Balancer),4.08,34.17,32
+1,1,200,WordPress (wordpress1),586.4,1924.2,32
+1,1,400,Locust (Gerador de Carga),76.4,65.06,34
+1,1,400,MySQL (Banco),88.03,877.55,34
+1,1,400,Nginx (Load Balancer),4.13,37.82,34
+1,1,400,WordPress (wordpress1),596.14,2183.65,34
+1,1,800,Locust (Gerador de Carga),78.23,96.51,38
+1,1,800,MySQL (Banco),87.76,878.68,38
+1,1,800,Nginx (Load Balancer),4.16,43.94,38
+1,1,800,WordPress (wordpress1),594.77,2216.88,38
+1,2,200,Locust (Gerador de Carga),72.49,48.19,32
+1,2,200,MySQL (Banco),87.92,881.58,32
+1,2,200,Nginx (Load Balancer),3.8,34.63,32
+1,2,200,WordPress (wordpress1),318.96,1901.6,32
+1,2,200,WordPress (wordpress2),289.48,1241.51,32
+1,2,400,Locust (Gerador de Carga),75.81,65.15,34
+1,2,400,MySQL (Banco),88.91,891.56,34
+1,2,400,Nginx (Load Balancer),4.22,37.5,34
+1,2,400,WordPress (wordpress1),305.35,1948.28,34
+1,2,400,WordPress (wordpress2),293.88,1913.58,34
+1,2,800,Locust (Gerador de Carga),76.2,92.91,38
+1,2,800,MySQL (Banco),87.88,894.9,38
+1,2,800,Nginx (Load Balancer),4.38,43.04,38
+1,2,800,WordPress (wordpress1),291.34,2118.12,38
+1,2,800,WordPress (wordpress2),299.32,2097.69,38
+1,3,200,Locust (Gerador de Carga),70.5,49.13,32
+1,3,200,MySQL (Banco),86.64,888.52,32
+1,3,200,Nginx (Load Balancer),3.7,34.5,32
+1,3,200,WordPress (wordpress1),201.89,1762.4,32
+1,3,200,WordPress (wordpress2),201.3,1695.36,32
+1,3,200,WordPress (wordpress3),198.23,937.87,32
+1,3,400,Locust (Gerador de Carga),72.25,62.92,34
+1,3,400,MySQL (Banco),86.46,902.71,34
+1,3,400,Nginx (Load Balancer),4.01,37.51,34
+1,3,400,WordPress (wordpress1),200.08,1744.99,34
+1,3,400,WordPress (wordpress2),199.76,1673.67,34
+1,3,400,WordPress (wordpress3),203.9,1602.75,34
+1,3,800,Locust (Gerador de Carga),72.68,96.71,38
+1,3,800,MySQL (Banco),89.27,909.15,38
+1,3,800,Nginx (Load Balancer),4.28,42.95,38
+1,3,800,WordPress (wordpress1),204.77,2067.97,38
+1,3,800,WordPress (wordpress2),197.14,2017.71,38
+1,3,800,WordPress (wordpress3),202.19,1975.97,38
+2,1,200,Locust (Gerador de Carga),59.54,47.05,31
+2,1,200,MySQL (Banco),108.46,890.13,31
+2,1,200,Nginx (Load Balancer),5.27,34.24,31
+2,1,200,WordPress (wordpress1),581.59,1623.54,31
+2,1,400,Locust (Gerador de Carga),59.79,63.16,34
+2,1,400,MySQL (Banco),108.4,890.64,34
+2,1,400,Nginx (Load Balancer),5.4,37.6,34
+2,1,400,WordPress (wordpress1),582.45,1648.85,34
+2,1,800,Locust (Gerador de Carga),61.91,93.37,38
+2,1,800,MySQL (Banco),109.29,891.84,38
+2,1,800,Nginx (Load Balancer),5.44,43.81,38
+2,1,800,WordPress (wordpress1),586.07,1692.35,38
+2,2,200,Locust (Gerador de Carga),57.18,46.59,32
+2,2,200,MySQL (Banco),108.36,895.5,32
+2,2,200,Nginx (Load Balancer),5.08,34.39,32
+2,2,200,WordPress (wordpress1),303.7,1391.52,32
+2,2,200,WordPress (wordpress2),294.64,974.86,32
+2,2,400,Locust (Gerador de Carga),57.2,62.92,34
+2,2,400,MySQL (Banco),107.14,908.93,34
+2,2,400,Nginx (Load Balancer),5.33,37.36,34
+2,2,400,WordPress (wordpress1),292.83,1525.55,34
+2,2,400,WordPress (wordpress2),299.98,1389.81,34
+2,2,800,Locust (Gerador de Carga),58.4,91.09,38
+2,2,800,MySQL (Banco),107.05,913.24,38
+2,2,800,Nginx (Load Balancer),5.51,43.14,38
+2,2,800,WordPress (wordpress1),289.62,1665.75,38
+2,2,800,WordPress (wordpress2),293.34,1526.06,38
+2,3,200,Locust (Gerador de Carga),58.29,47.06,32
+2,3,200,MySQL (Banco),108.57,907.85,32
+2,3,200,Nginx (Load Balancer),5.14,34.35,32
+2,3,200,WordPress (wordpress1),201.79,1327.44,32
+2,3,200,WordPress (wordpress2),199.13,1231.56,32
+2,3,200,WordPress (wordpress3),194.23,708.29,32
+2,3,400,Locust (Gerador de Carga),57.38,63.32,33
+2,3,400,MySQL (Banco),106.29,922.99,33
+2,3,400,Nginx (Load Balancer),5.24,37.45,33
+2,3,400,WordPress (wordpress1),196.27,1264.67,33
+2,3,400,WordPress (wordpress2),196.96,1241.73,33
+2,3,400,WordPress (wordpress3),200.6,1283.94,33
+2,3,800,Locust (Gerador de Carga),58.29,89.23,38
+2,3,800,MySQL (Banco),108.61,932.03,38
+2,3,800,Nginx (Load Balancer),5.42,43.05,38
+2,3,800,WordPress (wordpress1),199.45,1582.48,38
+2,3,800,WordPress (wordpress2),192.41,1512.69,38
+2,3,800,WordPress (wordpress3),198.55,1482.64,38
+3,1,200,Locust (Gerador de Carga),66.24,47.35,31
+3,1,200,MySQL (Banco),135.78,914.65,31
+3,1,200,Nginx (Load Balancer),6.61,34.29,31
+3,1,200,WordPress (wordpress1),548.06,1618.42,31
+3,1,400,Locust (Gerador de Carga),66.94,64.03,34
+3,1,400,MySQL (Banco),135.46,917.75,34
+3,1,400,Nginx (Load Balancer),6.66,37.74,34
+3,1,400,WordPress (wordpress1),546.47,1668.73,34
+3,1,800,Locust (Gerador de Carga),69.57,94.46,38
+3,1,800,MySQL (Banco),135.83,918.7,38
+3,1,800,Nginx (Load Balancer),6.64,43.83,38
+3,1,800,WordPress (wordpress1),546.91,1722.8,38
+3,2,200,Locust (Gerador de Carga),63.32,47.26,32
+3,2,200,MySQL (Banco),131.3,921.32,32
+3,2,200,Nginx (Load Balancer),6.44,34.56,32
+3,2,200,WordPress (wordpress1),275.54,1396.74,32
+3,2,200,WordPress (wordpress2),273.09,978.39,32
+3,2,400,Locust (Gerador de Carga),64.63,63.36,34
+3,2,400,MySQL (Banco),134.3,932.9,34
+3,2,400,Nginx (Load Balancer),6.47,37.51,34
+3,2,400,WordPress (wordpress1),281.18,1536.88,34
+3,2,400,WordPress (wordpress2),278.39,1397.53,34
+3,2,800,Locust (Gerador de Carga),66.63,92.54,38
+3,2,800,MySQL (Banco),135.69,937.33,38
+3,2,800,Nginx (Load Balancer),6.78,43.15,38
+3,2,800,WordPress (wordpress1),279.0,1677.39,38
+3,2,800,WordPress (wordpress2),278.29,1544.62,38
+3,3,200,Locust (Gerador de Carga),63.46,47.17,31
+3,3,200,MySQL (Banco),131.62,928.48,31
+3,3,200,Nginx (Load Balancer),6.2,34.42,31
+3,3,200,WordPress (wordpress1),185.25,1336.13,31
+3,3,200,WordPress (wordpress2),188.16,1243.94,31
+3,3,200,WordPress (wordpress3),188.89,938.95,31
+3,3,400,Locust (Gerador de Carga),63.3,63.18,33
+3,3,400,MySQL (Banco),132.56,943.28,33
+3,3,400,Nginx (Load Balancer),6.35,37.6,33
+3,3,400,WordPress (wordpress1),188.58,1202.72,33
+3,3,400,WordPress (wordpress2),187.78,1178.38,33
+3,3,400,WordPress (wordpress3),186.1,1327.12,33
+3,3,800,Locust (Gerador de Carga),66.57,91.9,38
+3,3,800,MySQL (Banco),134.35,950.79,38
+3,3,800,Nginx (Load Balancer),6.74,43.23,38
+3,3,800,WordPress (wordpress1),187.47,1444.93,38
+3,3,800,WordPress (wordpress2),186.9,1490.62,38
+3,3,800,WordPress (wordpress3),185.01,1510.27,38
