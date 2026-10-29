@@ -96,9 +96,9 @@ Actor Externo ─┼───────────────► ┌──�
 | **Memória RAM** | 32 GB DDR5 | 16 GB |
 | **Sistema Operacional** | Linux (CachyOS) | Zorin OS 18.1 (kernel 6.14) |
 | **Docker** | Docker Engine + Compose v2 | Docker 29.8 + Compose v5.5 |
-| **Carga Baixa (U_min)** | *pendente* | **200 usuários** (0% de erro) |
-| **Carga Média (U_med)** | *pendente* | **400 usuários** (0% de erro) |
-| **Carga Máxima (U_max)** | *pendente* | **800 usuários** (≤ 8,2% de erro) |
+| **Carga Baixa (U_min)** | **800 usuários** (0% de erro) | **200 usuários** (0% de erro) |
+| **Carga Média (U_med)** | **3.000 usuários** (0% de erro) | **400 usuários** (0% de erro) |
+| **Carga Máxima (U_max)** | **8.000 usuários** (0% de erro) | **800 usuários** (≤ 8,2% de erro) |
 
 ---
 
@@ -125,7 +125,7 @@ Actor Externo ─┼───────────────► ┌──�
 │   ├── consolidate_csv.py          # Lê os *_stats.csv do Locust
 │   └── plot_results.py             # Gera os gráficos
 ├── results/
-│   ├── maquina_1/                  # Máquina 1 (Ryzen) — pendente
+│   ├── maquina_1/                  # Máquina 1 (Ryzen 5 9600X) — 27 testes, calibragem e gráficos
 │   └── maquina_2/
 │       ├── calibracao.csv          # Varredura de calibragem (1 instância, cenário 1)
 │       ├── calibracao/             # CSVs brutos e log da calibragem
