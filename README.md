@@ -270,20 +270,84 @@ Todos os erros foram *timeouts* de 10 s. Cargas escolhidas: **200 / 400 / 800 us
 
 A máquina opera **no limite de CPU**: os contêineres somam ~767% de 800% (8 threads). O Locust sozinho consome ~66% (8,6% do total), CPU que deixa de ir para o Apache e o MySQL. É a penalidade de rodar o gerador de carga no mesmo host. O Locust não foi o gargalo: nenhum teste emitiu o aviso `CPU usage was too high`.
 
-### 8.2. Máquina 1 (Ryzen 5 9600X)
+### 8.2. Máquina 1 (AMD Ryzen 5 9600X, 6C/12T, 32 GB RAM DDR5)
 
-*Pendente:* executar os Passos 3 a 5 na Máquina 1 com `--maquina maquina_1`.
+#### Calibragem (cenário 1, 1 instância — `results/maquina_1/calibracao.csv`)
+
+| Usuários | Tempo médio | RPS | Erro |
+| :---: | :---: | :---: | :---: |
+| 200 | 0,42 s | 259,7 | 0% |
+| 400 | 1,22 s | 253,6 | 0% |
+| 800 | 2,93 s | 247,4 | 0% |
+| 1.200 | 2,25 s | 247,5 | 0% |
+| 1.600 | 2,41 s | 248,5 | 0% |
+| 2.000 | 2,53 s | 245,8 | 0% |
+| 3.000 | 3,01 s | 246,9 | 0% |
+| 5.000 | 3,88 s | 247,1 | 0% |
+| 8.000 | 5,28 s | 243,3 | 0% |
+| 15.000 | 8,25 s | 238,8 | 0% |
+| 25.000 | 12,42 s | 240,1 | 0% |
+
+Mesmo com até 25.000 usuários simultâneos, a Máquina 1 manteve **0,0% de erro**. A vazão atingiu o teto físico de processamento em ~245 req/s logo em 800 usuários, operando com **degradação graciosa** (enfileiramento com aumento proporcional de latência) em vez de timeouts ou quebra de sockets. Cargas selecionadas para a matriz: **800 / 3.000 / 8.000 usuários** (onde 800 é a carga máxima da Máquina 2, permitindo comparação empírica direta).
+
+#### Resultados consolidados (`results/maquina_1/resumo.csv`)
+
+| Cenário | Instâncias | Usuários | Tempo médio | RPS | Erro |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **1 — Imagem 1 MB** | 1 | 800 / 3000 / 8000 | 2,86 / 3,03 / 5,28 s | 251,5 / 246,0 / 243,3 | 0% / 0% / 0% |
+| | 2 | 800 / 3000 / 8000 | 3,01 / 3,04 / 5,11 s | 240,2 / 238,7 / 236,2 | 0% / 0% / 0% |
+| | 3 | 800 / 3000 / 8000 | 3,02 / 3,08 / 5,20 s | 241,0 / 239,3 / 233,5 | 0% / 0% / 0% |
+| **2 — Texto 400 KB** | 1 | 800 / 3000 / 8000 | 1,76 / 2,93 / 5,17 s | 384,4 / 363,3 / 358,8 | 0% / 0% / 0% |
+| | 2 | 800 / 3000 / 8000 | 1,85 / 2,70 / 4,73 s | 366,3 / 352,7 / 345,7 | 0% / 0% / 0% |
+| | 3 | 800 / 3000 / 8000 | 1,91 / 2,66 / 4,62 s | 355,7 / 347,6 / 341,8 | 0% / 0% / 0% |
+| **3 — Imagem 300 KB** | 1 | 800 / 3000 / 8000 | 1,37 / 2,69 / 4,73 s | 469,2 / 444,1 / 434,9 | 0% / 0% / 0% |
+| | 2 | 800 / 3000 / 8000 | 1,43 / 2,50 / 4,54 s | 453,3 / 435,9 / 425,4 | 0% / 0% / 0% |
+| | 3 | 800 / 3000 / 8000 | 1,47 / 2,51 / 4,42 s | 444,3 / 428,5 / 419,0 | 0% / 0% / 0% |
+
+**Todas as 27 combinações respeitam a regra** (0% de erro em todas as medições).
+
+#### Gráficos (estilo das páginas 4 e 5 do enunciado)
+
+| Cenário | Tempo de Resposta × Usuários | Requisições por Segundo × Instâncias |
+| :--- | :---: | :---: |
+| **Cenário 1 (Imagem 1 MB)** | ![Cenário 1 Latência](results/maquina_1/graficos/cenario_1_tempo_resposta.png) | ![Cenário 1 RPS](results/maquina_1/graficos/cenario_1_rps.png) |
+| **Cenário 2 (Texto 400 KB)** | ![Cenário 2 Latência](results/maquina_1/graficos/cenario_2_tempo_resposta.png) | ![Cenário 2 RPS](results/maquina_1/graficos/cenario_2_rps.png) |
+| **Cenário 3 (Imagem 300 KB)** | ![Cenário 3 Latência](results/maquina_1/graficos/cenario_3_tempo_resposta.png) | ![Cenário 3 RPS](results/maquina_1/graficos/cenario_3_rps.png) |
+
+#### Disputa de recursos no mesmo host (3 instâncias, 8000 usuários)
+
+![Disputa de Recursos CPU e RAM](results/maquina_1/graficos/disputa_recursos_cpu_ram.png)
+
+| Contêiner | CPU | RAM |
+| :--- | :---: | :---: |
+| WordPress (wordpress1 + 2 + 3) | 652,6% (~217,5% cada) | 697 MB (~232 MB cada) |
+| MySQL | 95,8% | 936 MB |
+| **Locust** | **62,6%** | 346 MB |
+| Nginx | 3,0% | 55 MB |
+| **Total** | **~814% de 1200% disponíveis** | ~2,03 GB |
+
+Ao contrário da Máquina 2 (que operou a 767% de 800%, no limite térmico e de threads), a Máquina 1 consumiu ~814% de 1200% disponíveis (12 threads). Os ~386% de folga garantiram que o Locust gerasse carga sem canibalizar o Apache e o MySQL, impedindo timeouts ou descarte de pacotes no kernel.
+
+### 8.3. Comparativo Direto entre as Máquinas
+
+![Comparativo de Calibragem](results/maquina_1/graficos/comparativo_maquinas_calibragem.png)
+
+| Métrica | Máquina 2 (Notebook i7-1165G7) | Máquina 1 (Desktop Ryzen 5 9600X) | Razão / Diferença |
+| :--- | :---: | :---: | :---: |
+| **Núcleos / Threads / RAM** | 4C / 8T (16 GB DDR4) | 6C / 12T (32 GB DDR5) | +50% núcleos / +100% RAM |
+| **Vazão Cenário 1 (1 MB)** | ~117 req/s | ~245 req/s | **2,1× mais rápida** |
+| **Vazão Cenário 2 (400 KB)** | ~145 req/s | ~360 req/s | **2,5× mais rápida** |
+| **Vazão Cenário 3 (300 KB)** | ~185 req/s | ~440 req/s | **2,4× mais rápida** |
+| **Carga Máxima Suportada** | 800 usuários (5,0% erro) | 8.000+ usuários (0,0% erro) | **10× maior concorrência** |
+| **Comportamento em Saturação** | Falha Catastrófica (Timeouts de 10s) | Degradação Graciosa (Enfileiramento) | Alta resiliência sob carga extrema |
 
 ---
 
-## 9. Análise e Conclusões (Máquina 2)
+## 9. Análise e Conclusões
 
-1. **Mais instâncias não aumentam a vazão quando todas dividem a mesma CPU.** Com a máquina saturada, o RPS **cai levemente** ao passar de 1 para 3 instâncias (cenário 1: 117 → 109 → 106 req/s) e a latência sobe (6,44 → 7,02 s com 800 usuários). Cada instância adiciona processos Apache/PHP que disputam os mesmos 8 threads, com custo extra de troca de contexto e memória (~1,7 GB por instância). A escalabilidade horizontal só traria ganho com as instâncias em hosts diferentes, ou com folga de CPU no host.
-
-2. **A vazão máxima é fixa; mais usuários só aumentam a fila.** O RPS fica praticamente constante em cada cenário (~117, ~145 e ~185 req/s), enquanto o tempo de resposta cresce de forma linear com o número de usuários (lei de Little: tempo ≈ usuários / vazão). Por isso o limite da máquina é definido pela latência aceitável, ou seja, pelo timeout de 10 s.
-
-3. **O tamanho e o tipo do conteúdo determinam o custo.** O post de 1 MB entrega ~117 req/s, o de texto de 400 KB ~145 req/s e o de 300 KB ~185 req/s. A latência com 800 usuários vai de 6,4 s (1 MB) a 3,9 s (300 KB).
-
-4. **Dimensionar o recurso compartilhado é pré-requisito para escalar** (ver [Seção 6](#6-gargalos-encontrados-e-correções)). Com o `max_connections` padrão do MySQL, adicionar instâncias fazia a taxa de erro saltar de 0% para até 85%.
-
-5. **Reprodutibilidade:** com `setup_wordpress.sh` e o orquestrador `run_all_benchmarks.py`, qualquer integrante reproduz os mesmos cenários e a mesma metodologia. Todos os CSVs brutos do Locust estão versionados em `results/`.
+1. **Mais instâncias no mesmo host físico não aumentam a vazão global quando a CPU é o gargalo:** Em ambas as máquinas, o RPS não triplica ao passar de 1 para 3 instâncias. Na Máquina 2 (saturada em 100%), o RPS até cai levemente (117 → 106 req/s) devido à sobrecarga de *context switching*. Na Máquina 1, onde sobram threads, a latência com 3 instâncias nos cenários 2 e 3 diminui com 8.000 usuários (de 5,17s para 4,62s no cenário 2), demonstrando melhor distribuição da fila.
+2. **A vazão máxima é fixa; o aumento de usuários gera fila (Lei de Little):** O throughput em cada cenário atinge um patamar fixo determinado pela capacidade de processamento PHP/I-O de rede. O aumento do número de usuários simultâneos reflete-se quase exclusivamente no aumento proporcional do tempo de resposta ($W \approx L / \lambda$).
+3. **Disputa de recursos gerador vs. aplicação (Requisito do Enunciado):** O teste evidenciou o impacto direto do Locust no mesmo host. Na Máquina 2 (8 threads), o Locust consumiu ~66% de CPU em um sistema já a 767%/800%, levando o servidor a timeouts por inanição. Na Máquina 1 (12 threads), o Locust consumiu 62,6% com folga de mais de 380% de CPU, operando com 0% de perdas.
+4. **O tamanho e formato do payload definem a velocidade de saturação:** O Cenário 3 (Imagem 300 KB) entregou a maior vazão (~440 req/s na M1, ~185 req/s na M2), seguido pelo Cenário 2 (Texto 400 KB, ~360 req/s na M1) e Cenário 1 (Imagem 1 MB, ~245 req/s na M1), provando o impacto do custo de transferência de rede e streaming TCP.
+5. **Dimensionamento compartilhado (MySQL) é indispensável:** Conforme documentado na Seção 6, o ajuste de `max_connections=500` e otimizações de `worker_connections=8192` e `nofile=65535` foram os responsáveis por viabilizar testes de alta concorrência sem falhas prematuras de infraestrutura.
+6. **Reprodutibilidade completa:** Os scripts de automação (`setup_wordpress.sh`, `run_all_benchmarks.py`, `plot_results.py`) garantiram metodologia 100% idêntica e reproduzível entre máquinas heterogêneas, com todos os dados brutos versionados em `results/`.

@@ -50,13 +50,20 @@ echo "=================================================================="
 # 1. Ajusta o número de instâncias do WordPress e recarrega o Nginx
 ./scripts/set_instances.sh "$INSTANCIAS"
 
-# 2. Para o container web interativo do Locust (se estiver rodando) para não concorrer na porta
+# 2. Garante que nenhum container anterior do Locust ficou órfão antes ou depois do teste
+cleanup() {
+    docker rm -f $(docker ps -q --filter ancestor=grubykarol/locust) >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+cleanup
 docker compose stop locust >/dev/null 2>&1 || true
 
 # 3. Executa o container do Locust na mesma rede da aplicação (conforme requisitos.txt)
-#    O Locust sai com código 1 quando houve qualquer falha; isso não invalida o CSV.
+#    O timeout do Linux garante que o script nunca fique travado aguardando o shutdown do Locust
+#    caso os sockets de gevent demorem a drenar, avançando automaticamente assim que o CSV estiver pronto.
 LOCUST_EXIT=0
-docker compose run --rm -T \
+MAX_WAIT_S=$(( DURACAO_S + RAMPA_S + 10 ))
+timeout --kill-after=5s "${MAX_WAIT_S}s" docker compose run --rm -T \
     -e ATTACKED_HOST="http://nginx" \
     -e LOCUST_FILE="locustfile_cenario${CENARIO}.py" \
     -e LOCUST_OPTS="--headless -u ${USUARIOS} -r ${SPAWN_RATE} --run-time ${RUN_TIME} --csv=${CSV_PREFIX} ${LOCUST_EXTRA_OPTS:-}" \
